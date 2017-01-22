@@ -67,11 +67,11 @@ If your project is in remote and .git file is on remote server. Tar your current
 
 Extract the package and do an initial sync
 
-    mysync.py --local_dir=/home/me/project/ --target_dir=me@remoteserver:/home/me/theproject/ --remote --ignore --init
+    mysync.py --local_dir=/home/me/project/ --target_dir=me@remoteserver:/home/me/theproject/ --remote --gitignore --init
 
-If everything looks fine remote the parameter --init and run again
+If everything looks fine remove the parameter --init and run again
 
-    mysync.py --local_dir=/home/me/project/ --target_dir=me@remoteserver:/home/me/theproject/ --remote --ignore
+    mysync.py --local_dir=/home/me/project/ --target_dir=me@remoteserver:/home/me/theproject/ --remote --gitignore
 
 **Note, use ssh_key or shared ssh connection to avoid password prompt**
 
@@ -81,11 +81,11 @@ If everything looks fine remote the parameter --init and run again
 If your git working directory is on local server, every thing is simpler.
 Make sure target directory exists on remote server
 
-    mysync.py --local_dir=/home/me/project/ --target_dir=me@remoteserver:/home/me/theproject/ --remote --ignore --init
+    mysync.py --local_dir=/home/me/project/ --target_dir=me@remoteserver:/home/me/theproject/ --remote --gitignore --init
 
-If everything looks fine remote the parameter --init and run again
+If everything looks fine remove the parameter --init and run again
 
-    mysync.py --local_dir=/home/me/project/ --target_dir=me@remoteserver:/home/me/theproject/ --remote --ignore
+    mysync.py --local_dir=/home/me/project/ --target_dir=me@remoteserver:/home/me/theproject/ --remote --gitignore
 
 
 ## License
