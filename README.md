@@ -5,7 +5,7 @@
 
 #MYSYNC
 
-inotify-tools and rsync based project file synchronization tool. Optimized for git project 
+inotify-tools and rsync based one-direction project file synchronization tool. Optimized for git project.
 
 
 ##PREREQUISITE
@@ -54,6 +54,8 @@ Should be exists on modem Linux system
 
 .git directory is never synced to avoid complex stall issues
 
+It's recommended to use proper .gitignore file to limit synced files, some of websites like [https://www.gitignore.io/](https://www.gitignore.io/ "https://www.gitignore.io/") provides good collection of gitignore list for OS/IDE/languages.
+
 Currently we can not sync file delete/rename
 
 
@@ -63,7 +65,7 @@ Currently we can not sync file delete/rename
 
 If your project is in remote and .git file is on remote server. Tar your current branch and download to local
 
-    git archive --format=tar --prefix=project/ master | gzip >master.tar.gz
+    export BR=`git symbolic-ref --short -q HEAD`  && git archive --format=tar --prefix=$BR/ $BR | gzip >/tmp/$USER-$BR.tar.gz
 
 Extract the package and do an initial sync
 

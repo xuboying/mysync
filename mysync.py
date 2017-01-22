@@ -37,25 +37,22 @@
 # https://docs.python.org/3/library/typing.html
 
 
-from typing import Any, Dict, Tuple, List
-import sys
+import argparse
+import asyncio
+import asyncio.subprocess
 import functools
 import logging
-import asyncio
-import subprocess
-import asyncio.subprocess
-import re
-import shlex
-import argparse
-import fnmatch
 import os
+import re
+import sys
 from pathlib import Path
+from typing import List
 
 LOOP = None  # type: asyncio.AbstractEventLoop
 LOG = None  # type: logging.Logger
 
 
-class GitIgnore():
+class GitIgnore:
 
     def __init__(self, fn: str):
         self.fn = fn
@@ -63,7 +60,8 @@ class GitIgnore():
         self.whitelist = []
         self.update()
 
-    def translate(self, line: str):
+    @staticmethod
+    def translate(line: str):
         line = re.sub(r'(^\s*!)', '', line)
         line = re.sub(r'\.', r'\\.', line)
         line = re.sub(r'\*', r'.*', line)
@@ -78,9 +76,9 @@ class GitIgnore():
                 line = line.rstrip()
                 if not re.search(r'^\s*#', line) and not re.search(r'^\s*$', line):
                     if re.search(r'^\s*!', line):
-                        self.whitelist.append(self.translate(line))
+                        self.whitelist.append(GitIgnore.translate(line))
                     else:
-                        self.ignorelist.append(self.translate(line))
+                        self.ignorelist.append(GitIgnore.translate(line))
 
     def match(self, fn: str):
         for p in self.whitelist:
@@ -92,15 +90,15 @@ class GitIgnore():
         return False
 
 
-class MyConfig():
+class MyConfig:
 
-    def __init__(self, local_dir: str, target_dir: str, remote: bool, ssh_tunnel_port, gitignore, dry_run):
-        self.local_dir = local_dir
-        self.target_dir = target_dir
-        self.remote = remote
-        self.ssh_tunnel_port = ssh_tunnel_port
-        self.gitignore = gitignore
-        self.dry_run = dry_run
+    def __init__(self, local_dir_: str, target_dir_: str, remote_: bool, ssh_tunnel_port_, gitignore_, dry_run_):
+        self.local_dir = local_dir_
+        self.target_dir = target_dir_
+        self.remote = remote_
+        self.ssh_tunnel_port = ssh_tunnel_port_
+        self.gitignore = gitignore_
+        self.dry_run = dry_run_
         pass
 
 
@@ -118,11 +116,11 @@ class PIPEProtocol(asyncio.SubprocessProtocol):
         for x in stdinlist:
             LOG.info(x)
         LOG.info("Pending files end: ")
-        cmd = []
-        cmd.append("rsync")
+        cmd = ["rsync"]
         if CFG.remote:
             if CFG.ssh_tunnel_port:
-                cmd.append("-e ssh -p %s", CFG.ssh_tunnel_port)
+                cmd.append("-e ssh -p %s")
+                cmd.append(CFG.ssh_tunnel_port)
         cmd.append('-urvz')
         if CFG.dry_run:
             cmd.append('--dry-run')
@@ -152,8 +150,8 @@ class PIPEProtocol(asyncio.SubprocessProtocol):
 
         # self.output = bytearray()
 
-    def run_it(self, *argc):
-        if len(self.PENDING.keys()) > 0:
+    def run_it(self, *args):
+        if len(self.PENDING) > 0:
             if not self.RSYNC_FUTURE:
                 LOG.debug("Will call rsync")
                 self.RSYNC_FUTURE = LOOP.create_future()
@@ -166,9 +164,9 @@ class PIPEProtocol(asyncio.SubprocessProtocol):
         cmd_str = data.decode()  # type: str
         cmd_list = []
         for x in cmd_str.split("\n"):
-            M = re.search('^UPDATE:(.*)$', x)
-            if M:
-                pp = Path(M.group(1))
+            m = re.search('^UPDATE:(.*)$', x)
+            if m:
+                pp = Path(m.group(1))
                 if pp.is_dir():
                     continue
                 p = str(pp.relative_to(CFG.local_dir))
@@ -184,7 +182,7 @@ class PIPEProtocol(asyncio.SubprocessProtocol):
                 self.PENDING[x] = 1
         self.PENDING.pop(".", None)
         self.PENDING.pop("", None)
-        if len(self.PENDING.keys()) > 0:
+        if len(self.PENDING) > 0:
             self.run_it()
         # self.output.extend(data)
 
@@ -198,13 +196,20 @@ async def getcmd(cmd: List[str], future: asyncio.futures.Future):
 
 async def main() -> None:
     f1 = LOOP.create_future()  # type: asyncio.Future
-    f1.add_done_callback(lambda x: LOG.info("Done"))
+
     cmd = ['inotifywait', '-e', 'CREATE,CLOSE_WRITE,DELETE,MODIFY,MOVED_FROM,MOVED_TO',
            '-m', '-r', '--format', 'UPDATE:%w/%f', CFG.local_dir]
+    LOG.info('''Monitoring started, leave this terminal open and you can back to projects tool/ide''')
+    LOG.info('''Changed files will be synced to target''')
     transport, protocol = await getcmd(cmd=cmd, future=f1)
+
+    def cleanup(*args):
+        LOG.info("Done")
+        transport.close()
+        pass
+
+    f1.add_done_callback(cleanup)
     # await f1
-    # transport.close()
-    # print(bytes(protocol.output).decode())
 
 
 def prepare_logging(name: str) -> logging.Logger:
@@ -212,25 +217,24 @@ def prepare_logging(name: str) -> logging.Logger:
     logger.setLevel(logging.DEBUG)
     chh = logging.StreamHandler()
     chh.setLevel(logging.INFO)
-    formatterfhh = logging.Formatter(
-        '[%(asctime)s] - %(name)s - {%(pathname)s:%(lineno)d} - %(levelname)s - %(message)s')
-    formatterchh = logging.Formatter(' %(filename)s:%(lineno)d - %(levelname)s - %(message)s')
     formatterchh = logging.Formatter('%(filename)s:%(lineno)d:%(levelname)s - %(message)s')
     chh.setFormatter(formatterchh)
+    logger.addHandler(chh)
+    # formatterfhh = logging.Formatter('[%(asctime)s] - %(name)s - {%(pathname)s:%(lineno)d} - %(levelname)s - %(message)s')
+    # formatterchh = logging.Formatter(' %(filename)s:%(lineno)d - %(levelname)s - %(message)s')
     # fhh = logging.FileHandler("%s.log" % name)
     # fhh.setLevel(logging.DEBUG)
     # fhh.setFormatter(formatterfhh)
     # logger.addHandler(fhh)
-    logger.addHandler(chh)
     return logger
 
 
 async def init():
-    cmd = []
-    cmd.append("rsync")
+    cmd = ["rsync"]
     if CFG.remote:
         if CFG.ssh_tunnel_port:
-            cmd.append("-e ssh -p %s", CFG.ssh_tunnel_port)
+            cmd.append("-e ssh -p %s")
+            cmd.append(CFG.ssh_tunnel_port)
     if CFG.dry_run:
         cmd.append('--dry-run')
     cmd.append('-urvz')
@@ -255,7 +259,7 @@ async def init():
                 f[x] = 1
     f.pop(".", None)
     LOG.info(f)
-    if len(f.keys()) == 0:
+    if len(f) == 0:
         cmd = ['echo', ""]
     proc = await asyncio.create_subprocess_exec(*cmd, stdin=asyncio.subprocess.PIPE,
                                                 stdout=asyncio.subprocess.PIPE, loop=LOOP)
@@ -284,12 +288,12 @@ if __name__ == '__main__':
                         required=False, action='store_true')
     parser.add_argument('--dry_run', help='Dry run, not really do the sync', required=False, action='store_true')
 
-    args = parser.parse_args()
+    arguments = parser.parse_args()
 
-    local_dir = args.local_dir[0]
-    target_dir = args.target_dir[0]
+    local_dir = arguments.local_dir[0]
+    target_dir = arguments.target_dir[0]
     gitignore = None
-    if args.gitignore:
+    if arguments.gitignore:
         P = Path(local_dir)
         gitignorepath = P / '.gitignore'
         if gitignorepath.is_file():
@@ -300,16 +304,16 @@ if __name__ == '__main__':
 
     if local_dir[-1:] != "/":
         local_dir += "/"
-    if not args.remote:
+    if not arguments.remote:
         if not os.path.isdir(target_dir):
             parser.error("target_dir: %s does not exist" % target_dir)
         if target_dir[-1:] != "/":
             target_dir += "/"
 
-    ssh_tunnel_port = args.ssh_tunnel_port[0] if args.ssh_tunnel_port else None
+    ssh_tunnel_port = arguments.ssh_tunnel_port[0] if arguments.ssh_tunnel_port else None
 
-    CFG = MyConfig(local_dir=local_dir, target_dir=target_dir, remote=args.remote,
-                   ssh_tunnel_port=ssh_tunnel_port, gitignore=gitignore, dry_run=args.dry_run)
+    CFG = MyConfig(local_dir_=local_dir, target_dir_=target_dir, remote_=arguments.remote,
+                   ssh_tunnel_port_=ssh_tunnel_port, gitignore_=gitignore, dry_run_=arguments.dry_run)
 
     if sys.platform == 'win32':
         print("Windows Platform is not supported")
@@ -321,12 +325,20 @@ if __name__ == '__main__':
 
     LOG = prepare_logging("program")
 
-    if args.init:
+    if arguments.init:
         LOOP.run_until_complete(init())
         LOOP.close()
     else:
-        asyncio.ensure_future(main())
+        tasks = asyncio.gather(asyncio.ensure_future(main()))
+
         try:
+            # asyncio.ensure_future(main())
+            LOOP.run_until_complete(tasks)
             LOOP.run_forever()
         except KeyboardInterrupt:
+            tasks.cancel()
+            LOOP.run_forever()
+
+            tasks.exception()
+        finally:
             LOOP.close()
