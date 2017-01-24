@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# vim: autoindent tabstop=5 shiftwidth=4 expandtab softtabstop=4 filetype=python
+# vim: autoindent tabstop=4 shiftwidth=4 expandtab softtabstop=4 filetype=python
 # -*- coding: utf-8 -*-
 
 # BSD LICENSE
@@ -56,8 +56,8 @@ class GitIgnore:
 
     def __init__(self, fn: str):
         self.fn = fn
-        self.ignorelist = ['.git/']
-        self.whitelist = []
+        self.git_ignore_list = ['.git/']
+        self.white_list = []
         self.update()
 
     @staticmethod
@@ -69,22 +69,22 @@ class GitIgnore:
         return line
 
     def update(self):
-        self.ignorelist = ['.git/']
-        self.whitelist = []
+        self.git_ignore_list = ['.git/']
+        self.white_list = []
         with open(self.fn, 'r') as f:
             for line in f:
                 line = line.rstrip()
                 if not re.search(r'^\s*#', line) and not re.search(r'^\s*$', line):
                     if re.search(r'^\s*!', line):
-                        self.whitelist.append(GitIgnore.translate(line))
+                        self.white_list.append(GitIgnore.translate(line))
                     else:
-                        self.ignorelist.append(GitIgnore.translate(line))
+                        self.git_ignore_list.append(GitIgnore.translate(line))
 
     def match(self, fn: str):
-        for p in self.whitelist:
+        for p in self.white_list:
             if re.search(p, fn):
                 return False
-        for p in self.ignorelist:
+        for p in self.git_ignore_list:
             if re.search(p, fn):
                 return True
         return False
@@ -110,8 +110,8 @@ class PIPEProtocol(asyncio.SubprocessProtocol):
     async def run_rsync(self):
         await asyncio.sleep(1)
         stdinlist = []
-        stdinlist.extend(self.PENDING.keys())
-        self.PENDING.clear()
+        stdinlist.extend(self.pending.keys())
+        self.pending.clear()
         LOG.info("Pending files begin: ")
         for x in stdinlist:
             LOG.info(x)
@@ -139,26 +139,24 @@ class PIPEProtocol(asyncio.SubprocessProtocol):
         line = data.decode().rstrip()
         await proc.wait()
         LOG.info(line)
-        self.RSYNC_FUTURE.set_result('A')
-        self.RSYNC_FUTURE = None
+        self.rsync_future.set_result('A')
+        self.rsync_future = None
         return line
 
     def __init__(self, exit_future):
         self.exit_future = exit_future
-        self.PENDING = {}
-        self.RSYNC_FUTURE = None  # type: asyncio.Future
-
-        # self.output = bytearray()
+        self.pending = {}
+        self.rsync_future = None  # type: asyncio.Future
 
     def run_it(self, *args):
-        if len(self.PENDING) > 0:
-            if not self.RSYNC_FUTURE:
+        if len(self.pending) > 0:
+            if not self.rsync_future:
                 LOG.debug("Will call rsync")
-                self.RSYNC_FUTURE = LOOP.create_future()
-                self.RSYNC_FUTURE.add_done_callback(functools.partial(self.run_it))
+                self.rsync_future = LOOP.create_future()
+                self.rsync_future.add_done_callback(functools.partial(self.run_it))
                 asyncio.ensure_future(self.run_rsync())
             else:
-                LOG.debug("Rsync running! Will try later")
+                LOG.debug("Rsync already running! Will try later")
 
     def pipe_data_received(self, fd, data: bytes):
         cmd_str = data.decode()  # type: str
@@ -177,14 +175,13 @@ class PIPEProtocol(asyncio.SubprocessProtocol):
                     LOG.debug("Ignored file: %s" % x)
                     continue
                 else:
-                    self.PENDING[x] = 1
+                    self.pending[x] = 1
             else:
-                self.PENDING[x] = 1
-        self.PENDING.pop(".", None)
-        self.PENDING.pop("", None)
-        if len(self.PENDING) > 0:
+                self.pending[x] = 1
+        self.pending.pop(".", None)
+        self.pending.pop("", None)
+        if len(self.pending) > 0:
             self.run_it()
-        # self.output.extend(data)
 
     def process_exited(self):
         self.exit_future.set_result(True)
@@ -199,14 +196,12 @@ async def main() -> None:
 
     cmd = ['inotifywait', '-e', 'CREATE,CLOSE_WRITE,DELETE,MODIFY,MOVED_FROM,MOVED_TO',
            '-m', '-r', '--format', 'UPDATE:%w/%f', CFG.local_dir]
-    LOG.info('''Monitoring started, leave this terminal open and you can back to projects tool/ide''')
-    LOG.info('''Changed files will be synced to target''')
+    LOG.info('''Monitoring started, leave this terminal open and you can back to projects tool/ide\nChanged files will be synced to target''')
     transport, protocol = await getcmd(cmd=cmd, future=f1)
 
     def cleanup(*args):
         LOG.info("Done")
         transport.close()
-        pass
 
     f1.add_done_callback(cleanup)
     # await f1
@@ -246,9 +241,9 @@ async def init():
     cmd.append(CFG.target_dir)
 
     f = {}
-    for (dirpath, dirnames, filenames) in os.walk(CFG.local_dir):
-        for fn in filenames:
-            x = str((Path(dirpath) / fn).relative_to(CFG.local_dir))
+    for (dir_path, dir_names, file_names) in os.walk(CFG.local_dir):
+        for fn in file_names:
+            x = str((Path(dir_path) / fn).relative_to(CFG.local_dir))
             if CFG.gitignore:
                 if CFG.gitignore.match(x):
                     LOG.info("Ignored file: %s" % x)
@@ -275,7 +270,7 @@ async def init():
 
 if __name__ == '__main__':
 
-    parser = argparse.ArgumentParser(prog='mysync')
+    parser = argparse.ArgumentParser(prog='my sync')
     parser.add_argument('--local_dir', type=str, nargs=1, help='local_dir(Only on this machine)', required=True)
     parser.add_argument('--target_dir', type=str, nargs=1,
                         help='target_dir(On this machine or remote machine)', required=True)
@@ -295,9 +290,9 @@ if __name__ == '__main__':
     gitignore = None
     if arguments.gitignore:
         P = Path(local_dir)
-        gitignorepath = P / '.gitignore'
-        if gitignorepath.is_file():
-            gitignore = GitIgnore(fn=str(gitignorepath))
+        gitignore_path = P / '.gitignore'
+        if gitignore_path.is_file():
+            gitignore = GitIgnore(fn=str(gitignore_path))
 
     if not os.path.isdir(local_dir):
         parser.error("local_dir: %s does not exist" % local_dir)
